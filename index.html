@@ -1,0 +1,59 @@
+import os
+import math
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# Base Rates (زیرو ہڈن چارجز)
+RATES = {
+    "Bike": {"base": 80, "per_km": 25},
+    "Loader": {"base": 200, "per_km": 45},
+    "Datsun": {"base": 500, "per_km": 75},
+    "Truck": {"base": 1000, "per_km": 110}
+}
+
+# Haversine Formula (مفت فاصلہ کیلکولیٹر)
+def calculate_distance(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth radius in KM
+    dLat = math.radians(lat2 - lat1)
+    dLon = math.radians(lon2 - lon1)
+    a = math.sin(dLat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return round(R * c, 2)
+
+@app.route('/whatsapp-webhook', methods=['POST'])
+def whatsapp_bot():
+    data = request.json
+    msg_type = data.get('type')
+    
+    # 1. اگر کسٹمر اپنی لوکیشن بھیجے
+    if msg_type == 'location':
+        pickup_lat = data['latitude']
+        pickup_lng = data['longitude']
+        drop_lat = data['drop_latitude']
+        drop_lng = data['drop_longitude']
+        vehicle = data.get('vehicle', 'Datsun')
+
+        # فاصلہ اور فائنل کرایہ
+        km = calculate_distance(pickup_lat, pickup_lng, drop_lat, drop_lng)
+        fare = RATES[vehicle]["base"] + (km * RATES[vehicle]["per_km"])
+        final_fare = math.ceil(fare)
+
+        # InDrive طرز کی صاف واٹس ایپ رسید
+        response_text = f"""
+====================================
+📄 *ڈسپیچ رسید (DISPATCH RECEIPT)*
+====================================
+🛣️ کل فاصلہ: {km} KM
+🚛 منتخب گاڑی: {vehicle}
+------------------------------------
+★ *کل پکا کرایہ (FINAL FARE): PKR {final_fare}*
+====================================
+[ Confirm Order ]   [ Cancel ]
+"""
+        return jsonify({"reply": response_text, "fare": final_fare})
+
+    return jsonify({"status": "success"})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
